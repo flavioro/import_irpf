@@ -78,16 +78,16 @@ pip install -e .
 
 ## Uso rápido
 
-Simular importação de bens:
+Simular importação de bens. O `dry-run` simula o `upsert`, consolida duplicados da planilha e não altera o XML nem o `.conf`:
 
 ```bat
-irpf-importer bens --mode dry-run --irpf-dir "C:\Arquivos de Programas RFB\IRPF2026" --xml "C:\caminho\declaracao.xml" --arquivo examples\bens_exemplo.csv --sem-recalcular-conf
+irpf-importer bens --mode dry-run --irpf-dir "C:\Arquivos de Programas RFB\IRPF2026" --xml "data\work\declaracoes\86320947187\86320947187-0000000000.xml" --arquivo data\input\bens\bens_2025.xlsx --backup-dir data\backup --sem-recalcular-conf
 ```
 
-Importar bens com atualização por chave:
+Importar bens com atualização por chave segura. O `upsert` usa primeiro `grupo + codigo + codigoNegociacao`, depois `registroBem` real, `niEmpresa` e, por último, a discriminação normalizada:
 
 ```bat
-irpf-importer bens --mode upsert --irpf-dir "C:\Arquivos de Programas RFB\IRPF2026" --xml "C:\caminho\declaracao.xml" --arquivo dados\bens.xlsx --backup-dir backup
+irpf-importer bens --mode upsert --irpf-dir "C:\Arquivos de Programas RFB\IRPF2026" --xml "data\work\declaracoes\86320947187\86320947187-0000000000.xml" --arquivo data\input\bens\bens_2025.xlsx --backup-dir data\backup
 ```
 
 Importar proventos:
@@ -102,6 +102,18 @@ Clonar/sanitizar declaração para template de teste:
 irpf-importer clone --mode template-limpo --source-xml "C:\caminho\origem.xml" --target-dir "C:\Arquivos de Programas RFB\IRPF2026\aplicacao\dados" --target-cpf "00000000000" --target-name "PESSOA TESTE" --irpf-dir "C:\Arquivos de Programas RFB\IRPF2026" --backup-dir backup
 ```
 
+## Upsert de Bens e Direitos
+
+O importador foi ajustado para a estrutura real do XML da Receita: os campos de Bens ficam como atributos do elemento `<item>`. Em investimentos, o XML normalmente deixa `registroBem` vazio e usa `codigoNegociacao` para ações, FIIs, BDRs e ETFs.
+
+Por isso, o `upsert` agora prioriza `codigoNegociacao` e consolida linhas duplicadas da planilha antes de atualizar o XML. A saída do comando mostra também:
+
+```text
+Duplicados consolidados: N | Chaves ambíguas no XML: N
+```
+
+Não rode `upsert` se o `dry-run` mostrar muitos adicionados e zero atualizados sem explicação. Primeiro confira `docs/upsert_bens.md`.
+
 ## Testes
 
 ```bat
@@ -111,7 +123,7 @@ pytest -q
 Resultado validado nesta entrega:
 
 ```text
-12 passed
+15 passed
 ```
 
 ## Documentação
@@ -121,3 +133,4 @@ Resultado validado nesta entrega:
 - `docs/fluxo_seguro_de_uso.md`
 - `docs/comandos.md`
 - `docs/estrutura_xml_irpf2026.md`
+- `docs/upsert_bens.md`

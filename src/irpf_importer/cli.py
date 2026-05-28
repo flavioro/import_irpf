@@ -62,6 +62,7 @@ def main() -> None:
         s = result.stats
         print(f"Modo: {s.mode}")
         print(f"Adicionados: {s.added} | Atualizados: {s.updated} | Removidos: {s.removed}")
+        print(f"Duplicados consolidados: {s.consolidated_duplicates} | Chaves ambíguas no XML: {s.ambiguous_keys}")
         print(f"Total itens: {s.total_items}")
         print(f"Totais: anterior={s.total_exercicio_anterior} atual={s.total_exercicio_atual}")
         return

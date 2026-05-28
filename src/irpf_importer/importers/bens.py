@@ -108,26 +108,8 @@ BEM_DEFAULTS = {
     "valorRecebido": "0,00",
 }
 
-CSV_FIELDS = [
-    "grupo",
-    "codigo",
-    "discriminacao",
-    "pais",
-    "nomePais",
-    "valorExercicioAnterior",
-    "valorExercicioAtual",
-    "registroBem",
-    "registrado",
-    "unidade",
-    "dataAquisicao",
-    "municipio",
-    "uf",
-    "cep",
-    "logradouro",
-    "numero",
-    "complemento",
-    "bairro",
-]
+CSV_FIELDS = [field for field in BEM_DEFAULTS if field not in {"indice", "indiceAnterior"}]
+MONEY_FIELDS = ("valorExercicioAnterior", "valorExercicioAtual", "valorRecebido")
 
 
 @dataclass(frozen=True)
@@ -140,6 +122,8 @@ class ImportStats:
     total_exercicio_anterior: str
     total_exercicio_atual: str
     dry_run: bool = False
+    consolidated_duplicates: int = 0
+    ambiguous_keys: int = 0
 
 
 @dataclass(frozen=True)
@@ -153,9 +137,93 @@ class ImportResult:
         return self.stats.added
 
 
-def normalize_new_bem_item(item: ET.Element, row: dict[str, str], indice: str) -> None:
-    item.attrib.clear()
-    item.attrib.update(BEM_DEFAULTS)
+def _norm(value: str | None) -> str:
+    return " ".join((value or "").strip().upper().split())
+
+
+def _row_value(row: dict[str, str], field: str) -> str:
+    return (row.get(field) or "").strip()
+
+
+def _looks_like_real_registro_bem(value: str) -> bool:
+    """Evita usar ticker/código interno como se fosse registro real do IRPF."""
+    raw = value.strip()
+    compact = raw.replace(".", "").replace("-", "").replace("/", "").replace(" ", "")
+    digits = "".join(ch for ch in compact if ch.isdigit())
+    return len(digits) >= 6 and len(digits) >= len(compact) - 1
+
+
+def bem_key_from_row(row: dict[str, str]) -> str:
+    grupo = _row_value(row, "grupo")
+    codigo = _row_value(row, "codigo")
+    codigo_negociacao = _norm(_row_value(row, "codigoNegociacao"))
+    if codigo_negociacao:
+        return f"negociacao:{grupo}:{codigo}:{codigo_negociacao}"
+
+    registro = _row_value(row, "registroBem")
+    if registro and _looks_like_real_registro_bem(registro):
+        return f"registro:{grupo}:{codigo}:{_norm(registro)}"
+
+    ni_empresa = _norm(_row_value(row, "niEmpresa"))
+    if ni_empresa:
+        return f"empresa:{grupo}:{codigo}:{ni_empresa}"
+
+    discriminacao = _norm(_row_value(row, "discriminacao"))
+    return f"natural:{grupo}:{codigo}:{discriminacao}"
+
+
+def bem_key_from_item(item: ET.Element) -> str:
+    grupo = (item.attrib.get("grupo") or "").strip()
+    codigo = (item.attrib.get("codigo") or "").strip()
+    codigo_negociacao = _norm(item.attrib.get("codigoNegociacao"))
+    if codigo_negociacao:
+        return f"negociacao:{grupo}:{codigo}:{codigo_negociacao}"
+
+    registro = (item.attrib.get("registroBem") or "").strip()
+    if registro and _looks_like_real_registro_bem(registro):
+        return f"registro:{grupo}:{codigo}:{_norm(registro)}"
+
+    ni_empresa = _norm(item.attrib.get("niEmpresa"))
+    if ni_empresa:
+        return f"empresa:{grupo}:{codigo}:{ni_empresa}"
+
+    discriminacao = _norm(item.attrib.get("discriminacao"))
+    return f"natural:{grupo}:{codigo}:{discriminacao}"
+
+
+def _merge_duplicate_rows(base: dict[str, str], incoming: dict[str, str]) -> dict[str, str]:
+    merged = dict(base)
+    for field in MONEY_FIELDS:
+        total = br_money_to_decimal(merged.get(field, "0,00")) + br_money_to_decimal(incoming.get(field, "0,00"))
+        merged[field] = decimal_to_br_money(total)
+
+    for field in ("observacao", "instituicao", "conta", "discriminacao"):
+        a = (merged.get(field) or "").strip()
+        b = (incoming.get(field) or "").strip()
+        if b and b not in a:
+            merged[field] = f"{a} | {b}" if a else b
+    return merged
+
+
+def consolidate_rows_for_upsert(rows: list[dict[str, str]]) -> tuple[list[dict[str, str]], int]:
+    ordered: list[dict[str, str]] = []
+    index_by_key: dict[str, int] = {}
+    duplicates = 0
+    for row in rows:
+        key = bem_key_from_row(row)
+        if key in index_by_key:
+            ordered[index_by_key[key]] = _merge_duplicate_rows(ordered[index_by_key[key]], row)
+            duplicates += 1
+        else:
+            index_by_key[key] = len(ordered)
+            ordered.append(dict(row))
+    return ordered, duplicates
+
+
+def apply_bem_row_to_item(item: ET.Element, row: dict[str, str], indice: str, *, reset: bool) -> None:
+    if reset:
+        item.attrib.clear()
+        item.attrib.update(BEM_DEFAULTS)
     item.attrib["indice"] = indice
 
     for field in CSV_FIELDS:
@@ -163,9 +231,14 @@ def normalize_new_bem_item(item: ET.Element, row: dict[str, str], indice: str) -
         if value:
             item.attrib[field] = value
 
-    for money_field in ["valorExercicioAnterior", "valorExercicioAtual", "valorRecebido"]:
+    for money_field in MONEY_FIELDS:
         if money_field in item.attrib:
             item.attrib[money_field] = decimal_to_br_money(br_money_to_decimal(item.attrib[money_field]))
+
+
+# Compatibilidade com testes/código antigo.
+def normalize_new_bem_item(item: ET.Element, row: dict[str, str], indice: str) -> None:
+    apply_bem_row_to_item(item, row, indice, reset=True)
 
 
 def recalc_bens_totals(root: ET.Element) -> ImportStats:
@@ -215,33 +288,28 @@ def remove_all_bens_items(bens: ET.Element) -> int:
     return removed
 
 
-def bem_key_from_row(row: dict[str, str]) -> str:
-    registro = (row.get("registroBem") or "").strip()
-    if registro:
-        return f"registro:{registro}"
-    grupo = (row.get("grupo") or "").strip()
-    codigo = (row.get("codigo") or "").strip()
-    discriminacao = " ".join((row.get("discriminacao") or "").strip().upper().split())
-    return f"natural:{grupo}:{codigo}:{discriminacao}"
-
-
-def bem_key_from_item(item: ET.Element) -> str:
-    registro = (item.attrib.get("registroBem") or "").strip()
-    if registro:
-        return f"registro:{registro}"
-    grupo = (item.attrib.get("grupo") or "").strip()
-    codigo = (item.attrib.get("codigo") or "").strip()
-    discriminacao = " ".join((item.attrib.get("discriminacao") or "").strip().upper().split())
-    return f"natural:{grupo}:{codigo}:{discriminacao}"
-
-
 def validate_bens_row(row: dict[str, str], row_number: int) -> None:
     for field in ("grupo", "codigo", "discriminacao"):
         if not (row.get(field) or "").strip():
             raise RuntimeError(f"Linha {row_number}: campo obrigatório ausente: {field}")
-    for field in ("valorExercicioAnterior", "valorExercicioAtual", "valorRecebido"):
+    for field in MONEY_FIELDS:
         if field in row and (row.get(field) or "").strip():
             br_money_to_decimal(row.get(field))
+
+
+def _build_existing_index(bens: ET.Element) -> tuple[dict[str, ET.Element], int]:
+    existing_by_key: dict[str, ET.Element] = {}
+    ambiguous_keys = 0
+    duplicated: set[str] = set()
+    for item in bens.findall(q("item")):
+        key = bem_key_from_item(item)
+        if key in existing_by_key:
+            ambiguous_keys += 1
+            duplicated.add(key)
+            existing_by_key.pop(key, None)
+        elif key not in duplicated:
+            existing_by_key[key] = item
+    return existing_by_key, ambiguous_keys
 
 
 def import_bens(xml_path: Path, csv_path: Path, mode: str = "add", write: bool = True) -> ImportStats:
@@ -250,7 +318,8 @@ def import_bens(xml_path: Path, csv_path: Path, mode: str = "add", write: bool =
         raise ValueError(f"Modo inválido: {mode}. Use: {', '.join(SUPPORTED_MODES)}")
 
     dry_run = mode == "dry-run" or not write
-    effective_mode = "add" if mode == "dry-run" else mode
+    # O dry-run é pensado como simulação segura antes do upsert real.
+    effective_mode = "upsert" if mode == "dry-run" else mode
 
     tree = ET.parse(xml_path)
     root = tree.getroot()
@@ -266,7 +335,11 @@ def import_bens(xml_path: Path, csv_path: Path, mode: str = "add", write: bool =
     if not fieldnames:
         raise RuntimeError("Arquivo sem cabeçalho.")
 
-    existing_by_key = {bem_key_from_item(item): item for item in bens.findall(q("item"))}
+    consolidated_duplicates = 0
+    if effective_mode == "upsert":
+        rows, consolidated_duplicates = consolidate_rows_for_upsert(rows)
+
+    existing_by_key, ambiguous_keys = _build_existing_index(bens)
 
     for row_number, row in enumerate(rows, start=2):
         acao = (row.get("acao") or ("upsert" if effective_mode == "upsert" else "add")).strip().lower()
@@ -290,8 +363,10 @@ def import_bens(xml_path: Path, csv_path: Path, mode: str = "add", write: bool =
             existing = existing_by_key.get(key)
             if existing is not None:
                 indice = existing.attrib.get("indice") or next_index(bens)
-                normalize_new_bem_item(existing, row, indice)
-                existing_by_key[key] = existing
+                old_key = bem_key_from_item(existing)
+                apply_bem_row_to_item(existing, row, indice, reset=False)
+                existing_by_key.pop(old_key, None)
+                existing_by_key[bem_key_from_item(existing)] = existing
                 updated += 1
                 continue
 
@@ -300,7 +375,7 @@ def import_bens(xml_path: Path, csv_path: Path, mode: str = "add", write: bool =
 
         indice = next_index(bens)
         item = make_item_from_template(bens)
-        normalize_new_bem_item(item, row, indice)
+        apply_bem_row_to_item(item, row, indice, reset=True)
         bens.append(item)
         existing_by_key[bem_key_from_item(item)] = item
         added += 1
@@ -315,6 +390,8 @@ def import_bens(xml_path: Path, csv_path: Path, mode: str = "add", write: bool =
         total_exercicio_anterior=totals.total_exercicio_anterior,
         total_exercicio_atual=totals.total_exercicio_atual,
         dry_run=dry_run,
+        consolidated_duplicates=consolidated_duplicates,
+        ambiguous_keys=ambiguous_keys,
     )
 
     if not dry_run:
@@ -355,7 +432,7 @@ def run_import(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Importa Bens e Direitos de CSV para XML local do IRPF 2026.")
+    parser = argparse.ArgumentParser(description="Importa Bens e Direitos de CSV/XLSX para XML local do IRPF 2026.")
     parser.add_argument("--irpf-dir", required=True, help="Pasta de instalação do IRPF, ex.: C:\\Arquivos de Programas RFB\\IRPF2026")
     parser.add_argument("--xml", required=True, help="Caminho do XML da declaração fake/teste.")
     parser.add_argument("--csv", required=True, help="Arquivo CSV/XLSX com bens a importar.")
@@ -363,8 +440,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--mode",
         choices=SUPPORTED_MODES,
-        default="add",
-        help="add adiciona; replace remove todos e importa; upsert atualiza por registroBem ou grupo/código/discriminação; dry-run simula sem alterar XML/.conf.",
+        default="dry-run",
+        help="add adiciona; replace remove todos e importa; upsert atualiza por codigoNegociacao/registro real/chave natural; dry-run simula upsert sem alterar XML/.conf.",
     )
     parser.add_argument("--sem-recalcular-conf", action="store_true", help="Não recalcula o .conf. Use apenas para testes internos.")
     return parser
@@ -388,6 +465,8 @@ def main() -> None:
     print(f"Itens removidos em Bens e Direitos: {stats.removed}")
     print(f"Itens adicionados em Bens e Direitos: {stats.added}")
     print(f"Itens atualizados em Bens e Direitos: {stats.updated}")
+    print(f"Duplicados consolidados na entrada: {stats.consolidated_duplicates}")
+    print(f"Chaves ambíguas ignoradas no XML: {stats.ambiguous_keys}")
     print(f"Total de itens final: {stats.total_items}")
     print(f"Total exercício anterior: {stats.total_exercicio_anterior}")
     print(f"Total exercício atual: {stats.total_exercicio_atual}")
