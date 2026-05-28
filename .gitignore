@@ -27,3 +27,31 @@ data/snapshots/
 # Ambiente local
 .env
 config.toml
+
+# Pastas locais de trabalho/sensíveis do IRPF
+data/work/**
+data/backup/**
+data/reports/**
+data/snapshots/**
+tmp/**
+
+# Manter estrutura das pastas no Git
+!data/work/.gitkeep
+!data/work/declaracoes/.gitkeep
+!data/backup/.gitkeep
+!data/reports/.gitkeep
+!data/snapshots/.gitkeep
+!tmp/.gitkeep
+
+# Permitir arquivos fake de input do projeto
+!data/input/**
+
+# Dados locais, backups e arquivos sensiveis do IRPF
+data/
+tmp/
+*.xml
+*.conf
+*.bak
+*.BKP
+*.DEC
+*.REC

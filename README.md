@@ -23,6 +23,25 @@ A raiz do projeto agora fica apenas com arquivos de configuração/documentaçã
 
 Não ficam mais scripts Python soltos na raiz. Os comandos antigos `importar_bens_irpf2026.py`, `importar_proventos_irpf2026.py` e `clonar_declaracao_irpf2026.py` foram removidos da raiz; agora o ponto de entrada oficial é o CLI unificado `irpf-importer`.
 
+
+
+## Dados de entrada incluídos
+
+Esta versão já traz os arquivos fake de importação colocados nas pastas corretas:
+
+```text
+data/input/bens/bens_2025.xlsx
+data/input/bens/bens_2025.csv
+data/input/bens/bens_irpf2026_import_fake.xlsx
+data/input/bens/bens_irpf2026_import_fake.csv
+data/input/bens/bens_irpf_teste.csv
+data/input/proventos/proventos_2025.csv
+data/input/proventos/proventos_para_futura_importacao.csv
+```
+
+Para detalhes, veja `docs/dados_e_entradas.md`.
+
+
 ## Código-fonte
 
 ```text
