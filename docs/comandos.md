@@ -44,3 +44,20 @@ Para comparar os códigos da planilha com os códigos existentes no XML:
 ```bat
 python -c "import csv, xml.etree.ElementTree as ET; csvp='data/input/bens/bens_2025.csv'; xmlp='data/work/declaracoes/86320947187/86320947187-0000000000.xml'; rows=list(csv.DictReader(open(csvp, encoding='utf-8-sig'))); plan={str(r.get('codigoNegociacao') or r.get('registroBem') or '').strip().upper() for r in rows if str(r.get('codigoNegociacao') or r.get('registroBem') or '').strip()}; root=ET.parse(xmlp).getroot(); xml={str(i.attrib.get('codigoNegociacao','')).strip().upper() for i in root.iter() if i.tag.endswith('item') and str(i.attrib.get('codigoNegociacao','')).strip()}; print('planilha codigos:', len(plan)); print('xml codigos:', len(xml)); print('intersecao:', len(plan & xml)); print('exemplos em ambos:', sorted(plan & xml)[:30])"
 ```
+
+
+## Validar idempotência após upsert
+
+Depois de rodar `upsert` na cópia de trabalho, rode novamente o `dry-run`:
+
+```bat
+irpf-importer bens ^
+  --mode dry-run ^
+  --irpf-dir "%IRPF_DIR%" ^
+  --xml "data\work\declaracoes\%CPF%\%XML_FILE%" ^
+  --arquivo "data\inputensens_2025.xlsx" ^
+  --backup-dir "dataackup" ^
+  --sem-recalcular-conf
+```
+
+O resultado esperado deve ter `Adicionados: 0` ou somente itens que você decidiu tratar manualmente. Se aparecer `Ignorados por chave ambígua`, revise esses ativos antes de copiar para a pasta oficial da Receita.

@@ -91,3 +91,30 @@ Esse resultado indica que nenhuma chave da planilha bateu com o XML e pode haver
 5. Rode `upsert` somente na cópia de trabalho.
 6. Abra a declaração no programa oficial e valide as pendências.
 7. Só depois substitua os arquivos na pasta da Receita, mantendo backup.
+
+
+## Chaves ambíguas
+
+Uma chave é considerada ambígua quando o XML já possui dois ou mais `<item>` com a mesma chave de comparação. Exemplo comum:
+
+```text
+grupo=07 codigo=03 codigoNegociacao=JSRE11
+```
+
+Nessa situação, o importador **não escolhe um item automaticamente** e também **não adiciona outro item duplicado**. A linha é ignorada no upsert e contabilizada em:
+
+```text
+Ignorados por chave ambígua: N
+```
+
+A correção deve ser manual no XML/IRPF ou por uma regra futura mais específica, por exemplo incluindo instituição, conta, quantidade ou descrição.
+
+## Recálculo do `.conf`
+
+O `.conf` é recalculado pela rotina Java do próprio PGD IRPF. O projeto agora envia o caminho absoluto do XML para evitar erros como:
+
+```text
+java.nio.file.NoSuchFileException: data\work\declaracoes\...xml
+```
+
+Se o Java retornar stacktrace, `NoSuchFileException` ou não imprimir `CONF_ATUALIZADO`, o comando falha e não mascara o problema.

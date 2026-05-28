@@ -124,6 +124,7 @@ class ImportStats:
     dry_run: bool = False
     consolidated_duplicates: int = 0
     ambiguous_keys: int = 0
+    skipped_ambiguous: int = 0
 
 
 @dataclass(frozen=True)
@@ -297,17 +298,17 @@ def validate_bens_row(row: dict[str, str], row_number: int) -> None:
             br_money_to_decimal(row.get(field))
 
 
-def _build_existing_index(bens: ET.Element) -> tuple[dict[str, ET.Element], int]:
+def _build_existing_index(bens: ET.Element) -> tuple[dict[str, ET.Element], set[str]]:
     existing_by_key: dict[str, ET.Element] = {}
-    ambiguous_keys = 0
-    duplicated: set[str] = set()
+    ambiguous_keys: set[str] = set()
     for item in bens.findall(q("item")):
         key = bem_key_from_item(item)
+        if key in ambiguous_keys:
+            continue
         if key in existing_by_key:
-            ambiguous_keys += 1
-            duplicated.add(key)
+            ambiguous_keys.add(key)
             existing_by_key.pop(key, None)
-        elif key not in duplicated:
+        else:
             existing_by_key[key] = item
     return existing_by_key, ambiguous_keys
 
@@ -327,6 +328,7 @@ def import_bens(xml_path: Path, csv_path: Path, mode: str = "add", write: bool =
     added = 0
     removed = 0
     updated = 0
+    skipped_ambiguous = 0
 
     if effective_mode == "replace":
         removed = remove_all_bens_items(bens)
@@ -350,6 +352,10 @@ def import_bens(xml_path: Path, csv_path: Path, mode: str = "add", write: bool =
 
         validate_bens_row(row, row_number)
         key = bem_key_from_row(row)
+
+        if key in ambiguous_keys:
+            skipped_ambiguous += 1
+            continue
 
         if acao == "delete":
             existing = existing_by_key.get(key)
@@ -391,7 +397,8 @@ def import_bens(xml_path: Path, csv_path: Path, mode: str = "add", write: bool =
         total_exercicio_atual=totals.total_exercicio_atual,
         dry_run=dry_run,
         consolidated_duplicates=consolidated_duplicates,
-        ambiguous_keys=ambiguous_keys,
+        ambiguous_keys=len(ambiguous_keys),
+        skipped_ambiguous=skipped_ambiguous,
     )
 
     if not dry_run:
@@ -466,7 +473,8 @@ def main() -> None:
     print(f"Itens adicionados em Bens e Direitos: {stats.added}")
     print(f"Itens atualizados em Bens e Direitos: {stats.updated}")
     print(f"Duplicados consolidados na entrada: {stats.consolidated_duplicates}")
-    print(f"Chaves ambíguas ignoradas no XML: {stats.ambiguous_keys}")
+    print(f"Chaves ambíguas no XML: {stats.ambiguous_keys}")
+    print(f"Ignorados por chave ambígua: {stats.skipped_ambiguous}")
     print(f"Total de itens final: {stats.total_items}")
     print(f"Total exercício anterior: {stats.total_exercicio_anterior}")
     print(f"Total exercício atual: {stats.total_exercicio_atual}")

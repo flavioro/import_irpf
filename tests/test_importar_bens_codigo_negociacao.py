@@ -156,3 +156,45 @@ def test_upsert_consolidates_duplicate_codigo_negociacao_rows_before_update(tmp_
     cmig = items_by_codigo(xml)["CMIG4"]
     assert cmig.attrib["valorExercicioAnterior"] == "300,00"
     assert cmig.attrib["valorExercicioAtual"] == "4.000,00"
+
+
+def test_upsert_skips_ambiguous_codigo_negociacao_instead_of_adding_duplicate(tmp_path: Path):
+    xml = tmp_path / "dec.xml"
+    csv_path = tmp_path / "bens.csv"
+    xml.write_text(
+        f'''<?xml version="1.0" encoding="UTF-8"?>
+<classe xmlns="{NS}">
+  <bens totalExercicioAnterior="0,00" totalExercicioAtual="12.586,40" totalItens="2" ultimoIndiceGerado="00002">
+    <item indice="00001" grupo="07" codigo="03" codigoNegociacao="JSRE11" discriminacao="JSRE11, BANCO SAFRA" niEmpresa="13.371.132/0001-71" registroBem="" valorExercicioAnterior="6.293,60" valorExercicioAtual="6.293,60" pais="105" nomePais="105 - Brasil" registrado="2" unidade="2" />
+    <item indice="00002" grupo="07" codigo="03" codigoNegociacao="JSRE11" discriminacao="JSRE11 - JS REAL ESTATE" niEmpresa="13.371.132/0001-71" registroBem="" valorExercicioAnterior="0,00" valorExercicioAtual="6.292,80" pais="105" nomePais="105 - Brasil" registrado="2" unidade="2" />
+  </bens>
+  <resumo><outrasInformacoes bensDireitosExercicioAnterior="0,00" bensDireitosExercicioAtual="12.586,40" /></resumo>
+</classe>''',
+        encoding="utf-8",
+    )
+    original = xml.read_text(encoding="utf-8")
+    write_csv(
+        csv_path,
+        [
+            {
+                "acao": "upsert",
+                "grupo": "07",
+                "codigo": "03",
+                "codigoNegociacao": "JSRE11",
+                "registroBem": "JSRE11",
+                "discriminacao": "JSRE11 consolidado",
+                "niEmpresa": "13.371.132/0001-71",
+                "valorExercicioAnterior": "6.293,60",
+                "valorExercicioAtual": "6.293,60",
+            }
+        ],
+    )
+
+    stats = import_bens(xml, csv_path, mode="dry-run")
+
+    assert stats.added == 0
+    assert stats.updated == 0
+    assert stats.ambiguous_keys == 1
+    assert stats.skipped_ambiguous == 1
+    assert stats.total_items == 2
+    assert xml.read_text(encoding="utf-8") == original

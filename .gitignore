@@ -46,14 +46,8 @@ tmp/**
 # Permitir arquivos fake de input do projeto
 !data/input/**
 
-# Dados locais, backups e arquivos sensiveis do IRPF
+# Pastas locais ignoradas
+/data/
+/tmp/
 data/
 tmp/
-*.xml
-*.conf
-*.bak
-*.BKP
-*.DEC
-*.REC
-*.dec
-*.rec

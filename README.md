@@ -134,3 +134,19 @@ Resultado validado nesta entrega:
 - `docs/comandos.md`
 - `docs/estrutura_xml_irpf2026.md`
 - `docs/upsert_bens.md`
+
+
+## Melhorias do upsert de Bens
+
+O importador de Bens e Direitos usa a estrutura real do XML local do IRPF 2026, onde os dados de cada bem ficam nos atributos do elemento `item`.
+
+No modo `upsert`, a chave de comparação é escolhida nesta ordem:
+
+1. `grupo + codigo + codigoNegociacao`, para ações, FIIs, ETFs, BDRs, CDBs e outros investimentos com código.
+2. `grupo + codigo + registroBem`, somente quando `registroBem` parece um registro real, como RENAVAM, matrícula ou número longo.
+3. `grupo + codigo + niEmpresa`, quando não existe código de negociação.
+4. `grupo + codigo + discriminacao normalizada`, como último fallback.
+
+Quando o XML tem mais de um item com a mesma chave, o importador considera a chave ambígua e não atualiza nem adiciona esse item automaticamente. A saída mostra `Ignorados por chave ambígua`, para evitar duplicidade silenciosa.
+
+O recálculo do `.conf` usa caminho absoluto do XML e falha explicitamente se o Java/Groovy da Receita retornar stacktrace, `NoSuchFileException` ou não confirmar `CONF_ATUALIZADO`.

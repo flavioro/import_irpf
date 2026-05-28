@@ -63,6 +63,8 @@ def main() -> None:
         print(f"Modo: {s.mode}")
         print(f"Adicionados: {s.added} | Atualizados: {s.updated} | Removidos: {s.removed}")
         print(f"Duplicados consolidados: {s.consolidated_duplicates} | Chaves ambíguas no XML: {s.ambiguous_keys}")
+        if getattr(s, "skipped_ambiguous", 0):
+            print(f"Ignorados por chave ambígua: {s.skipped_ambiguous}")
         print(f"Total itens: {s.total_items}")
         print(f"Totais: anterior={s.total_exercicio_anterior} atual={s.total_exercicio_atual}")
         return
