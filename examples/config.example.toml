@@ -1,0 +1,7 @@
+[irpf]
+install_dir = "C:\\Arquivos de Programas RFB\\IRPF2026"
+dados_dir = "C:\\Arquivos de Programas RFB\\IRPF2026\\aplicacao\\dados"
+
+[project]
+backup_dir = "data\\backup"
+input_dir = "data\\input"

@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Build/package
+build/
+dist/
+*.egg-info/
+
+# Dados de declaração e backups locais
+*.xml
+*.conf
+*.conf.pending
+*.bak
+*.BKP
+*.zip
+backups/
+data/backup/
+data/output/
+data/snapshots/
+
+# Ambiente local
+.env
+config.toml

@@ -1,0 +1,3 @@
+acao,grupo,codigo,discriminacao,pais,nomePais,valorExercicioAnterior,valorExercicioAtual,registroBem,registrado,unidade,dataAquisicao,municipio,uf,cep,logradouro,numero,complemento,bairro
+upsert,07,03,FII EXEMPLO - 100 cotas,105,105 - Brasil,"0,00","1.500,00",FII-EXEMPLO-001,2,2,,,,,,,
+upsert,07,01,ACAO EXEMPLO - 50 ações,105,105 - Brasil,"2.000,00","2.750,00",ACAO-EXEMPLO-001,2,2,,,,,,,
