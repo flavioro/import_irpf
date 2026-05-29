@@ -6,6 +6,7 @@ from pathlib import Path
 from .clone import clone_declaration, print_result as print_clone_result, SUPPORTED_CLONE_MODES
 from .importers.bens import run_import as run_import_bens, SUPPORTED_MODES as BENS_MODES
 from .importers.proventos import run_import as run_import_proventos, SUPPORTED_MODES as PROVENTOS_MODES
+from .migrar import migrate_declaration, print_result as print_migration_result
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -28,6 +29,22 @@ def build_parser() -> argparse.ArgumentParser:
     prov.add_argument("--mode", choices=PROVENTOS_MODES, default="dry-run")
     prov.add_argument("--sem-recalcular-conf", action="store_true")
 
+
+    migrar = sub.add_parser("migrar", help="Gera uma declaração 2026 a partir de XML base 2025 e planilhas atualizadas.")
+    migrar.add_argument("--source-xml", required=True, help="XML base da declaração anterior, ex.: IRPF 2025.")
+    migrar.add_argument("--target-dir", required=True, help="Pasta de saída para a declaração migrada.")
+    migrar.add_argument("--irpf-dir", help="Pasta de instalação do IRPF 2026. Obrigatório se recalcular .conf.")
+    migrar.add_argument("--bens", help="CSV/XLSX atualizado de Bens e Direitos.")
+    migrar.add_argument("--proventos", help="CSV/XLSX atualizado de proventos.")
+    migrar.add_argument("--target-cpf", help="Opcional: CPF destino. Se omitido, mantém o CPF do XML/arquivo origem.")
+    migrar.add_argument("--target-name", help="Opcional: nome destino. Se omitido, mantém o nome do XML origem.")
+    migrar.add_argument("--bens-mode", choices=BENS_MODES, default="upsert")
+    migrar.add_argument("--proventos-mode", choices=PROVENTOS_MODES, default="replace")
+    migrar.add_argument("--report", help="Caminho para gravar relatório JSON da migração.")
+    migrar.add_argument("--dry-run", action="store_true")
+    migrar.add_argument("--sem-limpar-recibos", action="store_true")
+    migrar.add_argument("--sem-recalcular-conf", action="store_true")
+
     clone = sub.add_parser("clone", help="Clona/sanitiza uma declaração para outro CPF.")
     clone.add_argument("--mode", required=True, choices=SUPPORTED_CLONE_MODES)
     clone.add_argument("--source-xml", required=True)
@@ -39,8 +56,8 @@ def build_parser() -> argparse.ArgumentParser:
     clone.add_argument("--dry-run", action="store_true")
     clone.add_argument("--sem-recalcular-conf", action="store_true")
     for arg, default in [
-        ("email", ""), ("celular", ""), ("ddd-celular", ""), ("data-nascimento", ""),
-        ("cep", ""), ("tipo-logradouro", "RUA"), ("logradouro", ""), ("numero", ""),
+        ("email", ""), ("telefone", ""), ("ddd", ""), ("celular", ""), ("ddd-celular", ""),
+        ("titulo-eleitor", "0000000000000"), ("data-nascimento", ""), ("cep", ""), ("tipo-logradouro", "RUA"), ("logradouro", ""), ("numero", ""),
         ("complemento", ""), ("bairro", ""), ("municipio", "0000"), ("uf", ""),
         ("natureza-ocupacao", "01"), ("ocupacao-principal", "519"), ("cpf-conjuge", ""),
     ]:
@@ -82,13 +99,33 @@ def main() -> None:
         print(f"Isentos adicionados: {s.isentos_added} | JCP adicionados: {s.jcp_added} | Ignorados: {s.ignored}")
         print(f"Totais: isentos={s.total_isentos} jcp={s.total_jcp}")
         return
+
+    if args.command == "migrar":
+        result = migrate_declaration(
+            source_xml=Path(args.source_xml),
+            target_dir=Path(args.target_dir),
+            irpf_dir=Path(args.irpf_dir) if args.irpf_dir else None,
+            bens_file=Path(args.bens) if args.bens else None,
+            proventos_file=Path(args.proventos) if args.proventos else None,
+            target_cpf=args.target_cpf,
+            target_name=args.target_name,
+            clear_receipts=not args.sem_limpar_recibos,
+            recalc_conf=not args.sem_recalcular_conf,
+            dry_run=args.dry_run,
+            bens_mode=args.bens_mode,
+            proventos_mode=args.proventos_mode,
+            report_path=Path(args.report) if args.report else None,
+        )
+        print_migration_result(result)
+        return
     if args.command == "clone":
         result = clone_declaration(
             source_xml=Path(args.source_xml), target_dir=Path(args.target_dir), target_cpf=args.target_cpf,
             target_name=args.target_name, mode=args.mode, irpf_dir=Path(args.irpf_dir) if args.irpf_dir else None,
             backup_dir=Path(args.backup_dir) if args.backup_dir else None, dry_run=args.dry_run,
-            recalc_conf=not args.sem_recalcular_conf, email=args.email, celular=args.celular,
-            ddd_celular=args.ddd_celular, data_nascimento=args.data_nascimento, cep=args.cep,
+            recalc_conf=not args.sem_recalcular_conf, email=args.email, telefone=args.telefone,
+            ddd=args.ddd, celular=args.celular, ddd_celular=args.ddd_celular,
+            titulo_eleitor=args.titulo_eleitor, data_nascimento=args.data_nascimento, cep=args.cep,
             tipo_logradouro=args.tipo_logradouro, logradouro=args.logradouro, numero=args.numero,
             complemento=args.complemento, bairro=args.bairro, municipio=args.municipio, uf=args.uf,
             natureza_ocupacao=args.natureza_ocupacao, ocupacao_principal=args.ocupacao_principal,

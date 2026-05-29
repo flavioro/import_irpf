@@ -30,11 +30,31 @@ Importar proventos:
 irpf-importer proventos --mode replace --irpf-dir "C:\Arquivos de Programas RFB\IRPF2026" --xml "C:\...\00000000000-0000000000.xml" --arquivo dados\proventos.xlsx --backup-dir backup
 ```
 
-Clonar declaração sanitizada:
+Clonar declaração sanitizada, sem informar os valores reais antigos. O comando localiza os atributos no XML e sobrescreve com valores fake:
 
 ```bat
-irpf-importer clone --mode template-limpo --source-xml origem.xml --target-dir "C:\Arquivos de Programas RFB\IRPF2026\aplicacao\dados" --target-cpf 00000000000 --target-name "PESSOA TESTE" --irpf-dir "C:\Arquivos de Programas RFB\IRPF2026" --backup-dir backup
+irpf-importer clone ^
+  --mode identidade ^
+  --source-xml "data\work\declaracoes\86320947187\86320947187-0000000000.xml" ^
+  --target-dir "data\work\clone" ^
+  --target-cpf 00000000000 ^
+  --target-name "CONTRIBUINTE TESTE" ^
+  --email "fake@example.com" ^
+  --ddd "19" ^
+  --telefone "11112222" ^
+  --ddd-celular "19" ^
+  --celular "999998888" ^
+  --titulo-eleitor "0000000000000" ^
+  --data-nascimento "01/01/1980" ^
+  --logradouro "RUA TESTE" ^
+  --bairro "BAIRRO TESTE" ^
+  --cep "13000000" ^
+  --municipio "6291" ^
+  --irpf-dir "C:\Arquivos de Programas RFB\IRPF2026" ^
+  --backup-dir backup
 ```
+
+Para gerar um template financeiro limpo, troque `--mode identidade` por `--mode template-limpo`.
 
 
 ## Conferir chaves de Bens
@@ -55,9 +75,40 @@ irpf-importer bens ^
   --mode dry-run ^
   --irpf-dir "%IRPF_DIR%" ^
   --xml "data\work\declaracoes\%CPF%\%XML_FILE%" ^
-  --arquivo "data\inputensens_2025.xlsx" ^
-  --backup-dir "dataackup" ^
+  --arquivo "data\input\bens\bens_2025.xlsx" ^
+  --backup-dir "data\backup" ^
   --sem-recalcular-conf
 ```
 
 O resultado esperado deve ter `Adicionados: 0` ou somente itens que você decidiu tratar manualmente. Se aparecer `Ignorados por chave ambígua`, revise esses ativos antes de copiar para a pasta oficial da Receita.
+
+
+## Migrar XML 2025 para uma declaração de trabalho 2026
+
+Simular sem gravar saída final:
+
+```bat
+irpf-importer migrar ^
+  --source-xml "data\input\xml_2025\21585587400-0000000000.xml" ^
+  --target-dir "data\work\migracao_2026" ^
+  --bens "data\input\bens\bens_2025.xlsx" ^
+  --proventos "data\input\proventos\proventos_2025.csv" ^
+  --dry-run ^
+  --sem-recalcular-conf
+```
+
+Gerar a declaração de trabalho e recalcular `.conf`:
+
+```bat
+irpf-importer migrar ^
+  --source-xml "data\input\xml_2025\21585587400-0000000000.xml" ^
+  --target-dir "data\work\migracao_2026" ^
+  --bens "data\input\bens\bens_2025.xlsx" ^
+  --proventos "data\input\proventos\proventos_2025.csv" ^
+  --irpf-dir "%IRPF_DIR%" ^
+  --report "data\reports\migracao_2025_2026.json"
+```
+
+O comando mantém CPF/nome do XML base, exceto se você informar `--target-cpf` e `--target-name`.
+
+Veja o fluxo completo em `docs/migracao_2025_2026.md`.

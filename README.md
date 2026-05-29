@@ -52,6 +52,7 @@ src/irpf_importer/
 ├── cli.py
 ├── clone.py
 ├── conf.py
+├── migrar.py
 ├── importers/
 │   ├── __init__.py
 │   ├── bens.py
@@ -96,11 +97,44 @@ Importar proventos:
 irpf-importer proventos --mode replace --irpf-dir "C:\Arquivos de Programas RFB\IRPF2026" --xml "C:\caminho\declaracao.xml" --arquivo dados\proventos.xlsx --backup-dir backup
 ```
 
-Clonar/sanitizar declaração para template de teste:
+Clonar/sanitizar declaração para teste ou novo template, sem informar os valores reais antigos. O comando sobrescreve nome/CPF, contato, endereço, título, data de nascimento e limpa recibos conhecidos nos identificadores:
 
 ```bat
-irpf-importer clone --mode template-limpo --source-xml "C:\caminho\origem.xml" --target-dir "C:\Arquivos de Programas RFB\IRPF2026\aplicacao\dados" --target-cpf "00000000000" --target-name "PESSOA TESTE" --irpf-dir "C:\Arquivos de Programas RFB\IRPF2026" --backup-dir backup
+irpf-importer clone --mode identidade --source-xml "data\work\declaracoes\86320947187\86320947187-0000000000.xml" --target-dir "data\work\clone" --target-cpf "00000000000" --target-name "CONTRIBUINTE TESTE" --email "fake@example.com" --telefone "11112222" --celular "999998888" --titulo-eleitor "0000000000000" --data-nascimento "01/01/1980" --logradouro "RUA TESTE" --bairro "BAIRRO TESTE" --cep "13000000" --municipio "6291" --irpf-dir "C:\Arquivos de Programas RFB\IRPF2026" --backup-dir backup
 ```
+
+Veja o mapa completo dos campos em `docs/sanitizacao_clone.md`.
+
+
+## Migração 2025 → 2026
+
+Para usar uma declaração do ano anterior como base estrutural e aplicar planilhas atualizadas, use o comando `migrar`. Ele copia o XML base, limpa recibos/metadados de transmissão, aplica Bens/Proventos e recalcula o `.conf` na pasta de trabalho.
+
+Primeiro simule:
+
+```bat
+irpf-importer migrar ^
+  --source-xml "data\input\xml_2025\21585587400-0000000000.xml" ^
+  --target-dir "data\work\migracao_2026" ^
+  --bens "data\input\bens\bens_2025.xlsx" ^
+  --proventos "data\input\proventos\proventos_2025.csv" ^
+  --dry-run ^
+  --sem-recalcular-conf
+```
+
+Depois execute em uma pasta de trabalho:
+
+```bat
+irpf-importer migrar ^
+  --source-xml "data\input\xml_2025\21585587400-0000000000.xml" ^
+  --target-dir "data\work\migracao_2026" ^
+  --bens "data\input\bens\bens_2025.xlsx" ^
+  --proventos "data\input\proventos\proventos_2025.csv" ^
+  --irpf-dir "%IRPF_DIR%" ^
+  --report "data\reports\migracao_2025_2026.json"
+```
+
+Veja detalhes em `docs/migracao_2025_2026.md`.
 
 ## Upsert de Bens e Direitos
 
@@ -123,7 +157,7 @@ pytest -q
 Resultado validado nesta entrega:
 
 ```text
-15 passed
+22 passed
 ```
 
 ## Documentação
@@ -134,6 +168,8 @@ Resultado validado nesta entrega:
 - `docs/comandos.md`
 - `docs/estrutura_xml_irpf2026.md`
 - `docs/upsert_bens.md`
+- `docs/sanitizacao_clone.md`
+- `docs/migracao_2025_2026.md`
 
 
 ## Melhorias do upsert de Bens
