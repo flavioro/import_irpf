@@ -22,7 +22,7 @@ Observações importantes:
 5. A aba Posição - Empréstimos não foi inserida no CSV de Bens para evitar possível duplicidade com ativos já listados. Pode ser tratada depois.
 
 XML base 2025 fake:
-- data/input/xml_2025/21585587400-0000000000.xml
+- data/input/xml_2025/CPF_FAKE-0000000000.xml
 
 Uso sugerido para migração:
-irpf-importer migrar --source-xml "data\input\xml_2025\21585587400-0000000000.xml" --target-dir "data\work\migracao_2026" --bens "data\input\bens\bens_2025.xlsx" --dry-run --sem-recalcular-conf
+irpf-importer migrar --source-xml "data\input\xml_2025\CPF_FAKE-0000000000.xml" --target-dir "data\work\migracao_2026" --bens "data\input\bens\bens_2025.xlsx" --dry-run --sem-recalcular-conf

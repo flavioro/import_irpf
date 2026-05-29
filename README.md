@@ -100,7 +100,7 @@ irpf-importer proventos --mode replace --irpf-dir "C:\Arquivos de Programas RFB\
 Gerar/atualizar somente o arquivo `.conf` de um XML já corrigido:
 
 ```bat
-irpf-importer conf --xml "data\work\declaracoes\00000000000 \00000000000 -0000000000.xml" --irpf-dir "C:\Arquivos de Programas RFB\IRPF2026"
+irpf-importer conf --xml "data\work\declaracoes\00000000000\00000000000-0000000000.xml" --irpf-dir "C:\Arquivos de Programas RFB\IRPF2026"
 ```
 
 Esse comando usa a mesma rotina Java do IRPF para gerar a chave/hash `.conf` ao lado do XML.

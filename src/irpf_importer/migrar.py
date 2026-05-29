@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 import json
-import shutil
+import re
 import tempfile
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from pathlib import Path
-import re
 import xml.etree.ElementTree as ET
 
-from .conf import recalcular_conf
 from .clone import BLANK_CPF, format_cpf, only_digits, unformat_cpf
+from .conf import recalcular_conf
 from .importers.bens import ImportStats as BensStats, import_bens
 from .importers.proventos import ProventosStats, import_proventos
 from .xml_utils import NS, q
@@ -23,9 +22,24 @@ TRANSMISSION_ATTRS = ("transmitida", "tpTransmitida", "declaracaoRetificadora")
 
 
 @dataclass(frozen=True)
+class ReferenceStats:
+    referencia_xml: Path | None
+    base_xml_2026: Path
+    classe_referencia: str
+    classe_base_2026: str
+    tipo_itens_referencia_prefix: str
+    tipo_itens_base_prefix: str
+    bens_referencia_total_itens: str
+    bens_base_total_itens: str
+    bens_referencia_total_atual: str
+    bens_base_total_anterior: str
+
+
+@dataclass(frozen=True)
 class MigrationStats:
     dry_run: bool
-    source_xml: Path
+    base_xml_2026: Path
+    referencia_xml_2025: Path | None
     target_xml: Path
     target_conf: Path
     target_cpf: str
@@ -33,6 +47,7 @@ class MigrationStats:
     receipts_cleared: int
     identifiers_updated: int
     cpf_beneficiario_updated: int
+    reference: ReferenceStats
     bens: BensStats | None
     proventos: ProventosStats | None
     report_path: Path | None = None
@@ -43,7 +58,11 @@ class MigrationResult:
     stats: MigrationStats
 
 
-def _read_source_identity(root: ET.Element, source_xml: Path) -> tuple[str, str]:
+def _tag_name(element: ET.Element) -> str:
+    return element.tag.split("}")[-1]
+
+
+def _read_source_identity(root: ET.Element, xml_path: Path) -> tuple[str, str]:
     for tag in ("identificadorDeclaracao", "identificadorDec", "copiaIdentificador"):
         el = root.find(f".//{q(tag)}")
         if el is not None:
@@ -51,16 +70,8 @@ def _read_source_identity(root: ET.Element, source_xml: Path) -> tuple[str, str]
             nome = (el.attrib.get("nome") or "").strip()
             if cpf:
                 return cpf, nome
-    m = re.search(r"(\d{11})", source_xml.name)
+    m = re.search(r"(\d{11})", xml_path.name)
     return (m.group(1) if m else "00000000000", "")
-
-
-def _target_paths(source_xml: Path, target_dir: Path, target_cpf: str | None) -> tuple[str, Path, Path]:
-    cpf_digits = unformat_cpf(target_cpf) if target_cpf else (_read_cpf_from_filename(source_xml) or "00000000000")
-    folder = target_dir / cpf_digits
-    xml = folder / f"{cpf_digits}-0000000000.xml"
-    conf = xml.with_suffix(".conf")
-    return cpf_digits, xml, conf
 
 
 def _read_cpf_from_filename(path: Path) -> str | None:
@@ -68,16 +79,73 @@ def _read_cpf_from_filename(path: Path) -> str | None:
     return m.group(1) if m else None
 
 
-def prepare_xml_for_next_year(
+def _target_paths(base_xml_2026: Path, target_dir: Path, target_cpf: str | None) -> tuple[str, Path, Path]:
+    cpf_digits = unformat_cpf(target_cpf) if target_cpf else (_read_cpf_from_filename(base_xml_2026) or "00000000000")
+    folder = target_dir / cpf_digits
+    xml = folder / f"{cpf_digits}-0000000000.xml"
+    conf = xml.with_suffix(".conf")
+    return cpf_digits, xml, conf
+
+
+def _first_or_empty(root: ET.Element, tag: str, attr: str) -> str:
+    el = root.find(f".//{q(tag)}")
+    if el is None:
+        return ""
+    return el.attrib.get(attr, "")
+
+
+def _tipo_prefix(root: ET.Element) -> str:
+    for el in root.iter():
+        tipo = el.attrib.get("tipoItens")
+        if tipo:
+            if ".negocio." in tipo:
+                return "serpro.ppgd.irpf.negocio"
+            if ".irpf." in tipo:
+                return "serpro.ppgd.irpf"
+            return tipo.rsplit(".", 1)[0]
+    return ""
+
+
+def _reference_stats(base_xml_2026: Path, referencia_xml_2025: Path | None) -> ReferenceStats:
+    base_root = ET.parse(base_xml_2026).getroot()
+    ref_root = ET.parse(referencia_xml_2025).getroot() if referencia_xml_2025 else None
+
+    def bens_attr(root: ET.Element | None, attr: str) -> str:
+        if root is None:
+            return ""
+        bens = root.find(f".//{q('bens')}")
+        return bens.attrib.get(attr, "") if bens is not None else ""
+
+    return ReferenceStats(
+        referencia_xml=referencia_xml_2025,
+        base_xml_2026=base_xml_2026,
+        classe_referencia=ref_root.attrib.get("classeJava", "") if ref_root is not None else "",
+        classe_base_2026=base_root.attrib.get("classeJava", ""),
+        tipo_itens_referencia_prefix=_tipo_prefix(ref_root) if ref_root is not None else "",
+        tipo_itens_base_prefix=_tipo_prefix(base_root),
+        bens_referencia_total_itens=bens_attr(ref_root, "totalItens"),
+        bens_base_total_itens=bens_attr(base_root, "totalItens"),
+        bens_referencia_total_atual=bens_attr(ref_root, "totalExercicioAtual"),
+        bens_base_total_anterior=bens_attr(base_root, "totalExercicioAnterior"),
+    )
+
+
+def prepare_xml_2026_for_update(
     root: ET.Element,
     *,
+    xml_path: Path,
     target_cpf: str | None = None,
     target_name: str | None = None,
-    clear_receipts: bool = True,
+    clear_receipts: bool = False,
 ) -> tuple[str, str, int, int, int]:
-    source_cpf, source_name = _read_source_identity(root, Path("declaracao.xml"))
+    """Prepara um XML 2026 já reconhecido pelo programa da Receita para receber dados atualizados.
+
+    Esta função NÃO tenta converter XML 2025 para 2026. Ela preserva a estrutura do XML base 2026
+    e atualiza dados fiscais/identidade somente quando solicitado. Por padrão, preserva recibos/metadados do XML 2026 base.
+    """
+    source_cpf, source_name = _read_source_identity(root, xml_path)
     cpf_digits = unformat_cpf(target_cpf) if target_cpf else source_cpf
-    cpf_fmt = format_cpf(cpf_digits) if cpf_digits and cpf_digits != "00000000000" else (format_cpf(cpf_digits) if len(cpf_digits) == 11 else BLANK_CPF)
+    cpf_fmt = format_cpf(cpf_digits) if len(cpf_digits) == 11 else BLANK_CPF
     name = target_name if target_name is not None else source_name
     now = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
@@ -103,7 +171,7 @@ def prepare_xml_for_next_year(
                         receipts_cleared += 1
                 for attr in TRANSMISSION_ATTRS:
                     if attr in ident.attrib:
-                        ident.attrib[attr] = "0" if attr == "transmitida" or attr == "declaracaoRetificadora" else ""
+                        ident.attrib[attr] = "0" if attr in {"transmitida", "declaracaoRetificadora"} else ""
                 ident.attrib["dataUltimoAcesso"] = now
 
     if target_cpf:
@@ -115,34 +183,57 @@ def prepare_xml_for_next_year(
     return cpf_digits, name, receipts_cleared, identifiers_updated, cpf_beneficiario_updated
 
 
+# Compatibilidade com testes/código antigo.
+def prepare_xml_for_next_year(root: ET.Element, *, target_cpf: str | None = None, target_name: str | None = None, clear_receipts: bool = False) -> tuple[str, str, int, int, int]:
+    return prepare_xml_2026_for_update(root, xml_path=Path("declaracao.xml"), target_cpf=target_cpf, target_name=target_name, clear_receipts=clear_receipts)
+
+
 def _stats_to_report(stats: MigrationStats) -> dict[str, object]:
     data = asdict(stats)
-    for key in ("source_xml", "target_xml", "target_conf", "report_path"):
+    for key in ("base_xml_2026", "referencia_xml_2025", "target_xml", "target_conf", "report_path"):
         if data.get(key) is not None:
             data[key] = str(data[key])
+    if data.get("reference"):
+        ref = data["reference"]
+        if isinstance(ref, dict):
+            for key in ("referencia_xml", "base_xml_2026"):
+                if ref.get(key) is not None:
+                    ref[key] = str(ref[key])
     return data
 
 
 def migrate_declaration(
     *,
-    source_xml: Path,
+    base_xml_2026: Path | None = None,
+    referencia_xml_2025: Path | None = None,
+    # source_xml permanece por compatibilidade; se usado, é tratado como base XML 2026.
+    source_xml: Path | None = None,
     target_dir: Path,
     irpf_dir: Path | None = None,
     bens_file: Path | None = None,
     proventos_file: Path | None = None,
     target_cpf: str | None = None,
     target_name: str | None = None,
-    clear_receipts: bool = True,
+    clear_receipts: bool = False,
     recalc_conf: bool = True,
     dry_run: bool = False,
     bens_mode: str = "upsert",
     proventos_mode: str = "replace",
     report_path: Path | None = None,
 ) -> MigrationResult:
-    source_xml = Path(source_xml)
+    if base_xml_2026 is None:
+        base_xml_2026 = source_xml
+    if base_xml_2026 is None:
+        raise ValueError("Informe --base-xml-2026. O XML 2025 deve ser usado apenas como referência.")
+
+    base_xml_2026 = Path(base_xml_2026)
+    referencia_xml_2025 = Path(referencia_xml_2025) if referencia_xml_2025 is not None else None
     target_dir = Path(target_dir)
-    if not source_xml.exists():
-        raise FileNotFoundError(source_xml)
+
+    if not base_xml_2026.exists():
+        raise FileNotFoundError(base_xml_2026)
+    if referencia_xml_2025 is not None and not referencia_xml_2025.exists():
+        raise FileNotFoundError(referencia_xml_2025)
     if bens_file is not None and not Path(bens_file).exists():
         raise FileNotFoundError(bens_file)
     if proventos_file is not None and not Path(proventos_file).exists():
@@ -153,14 +244,16 @@ def migrate_declaration(
         if not Path(irpf_dir).exists():
             raise FileNotFoundError(irpf_dir)
 
-    inferred_cpf = target_cpf or _read_cpf_from_filename(source_xml)
-    cpf_digits, intended_xml, intended_conf = _target_paths(source_xml, target_dir, inferred_cpf)
+    inferred_cpf = target_cpf or _read_cpf_from_filename(base_xml_2026)
+    _cpf_digits, intended_xml, intended_conf = _target_paths(base_xml_2026, target_dir, inferred_cpf)
+    ref_stats = _reference_stats(base_xml_2026, referencia_xml_2025)
 
     def run_pipeline(work_xml: Path, *, write_final: bool) -> tuple[str, str, int, int, int, BensStats | None, ProventosStats | None]:
-        tree = ET.parse(source_xml)
+        tree = ET.parse(base_xml_2026)
         root = tree.getroot()
-        final_cpf, final_name, receipts, identifiers, cpf_benef = prepare_xml_for_next_year(
+        final_cpf, final_name, receipts, identifiers, cpf_benef = prepare_xml_2026_for_update(
             root,
+            xml_path=base_xml_2026,
             target_cpf=target_cpf,
             target_name=target_name,
             clear_receipts=clear_receipts,
@@ -190,14 +283,12 @@ def migrate_declaration(
             tmp_xml = Path(tmp) / intended_xml.name
             final_cpf, final_name, receipts, identifiers, cpf_benef, bens_stats, proventos_stats = run_pipeline(tmp_xml, write_final=False)
     else:
-        if intended_xml.parent.exists() and any(intended_xml.parent.iterdir()):
-            # Não apaga dados existentes automaticamente; apenas sobrescreve o XML alvo.
-            pass
         final_cpf, final_name, receipts, identifiers, cpf_benef, bens_stats, proventos_stats = run_pipeline(intended_xml, write_final=True)
 
     stats = MigrationStats(
         dry_run=dry_run,
-        source_xml=source_xml,
+        base_xml_2026=base_xml_2026,
+        referencia_xml_2025=referencia_xml_2025,
         target_xml=intended_xml,
         target_conf=intended_conf,
         target_cpf=final_cpf,
@@ -205,6 +296,7 @@ def migrate_declaration(
         receipts_cleared=receipts,
         identifiers_updated=identifiers,
         cpf_beneficiario_updated=cpf_benef,
+        reference=ref_stats,
         bens=bens_stats,
         proventos=proventos_stats,
         report_path=report_path,
@@ -223,15 +315,25 @@ def print_result(result: MigrationResult) -> None:
     s = result.stats
     if s.dry_run:
         print("DRY-RUN: nenhum arquivo final foi gravado e o .conf não foi recalculado.")
-    print("Migração 2025 -> 2026")
-    print(f"XML origem: {s.source_xml}")
+    print("Migração para IRPF 2026")
+    print(f"XML base 2026: {s.base_xml_2026}")
+    if s.referencia_xml_2025:
+        print(f"XML referência 2025: {s.referencia_xml_2025}")
     print(f"XML destino: {s.target_xml}")
     print(f"CONF destino: {s.target_conf}")
     print(f"CPF destino: {s.target_cpf}")
     print(f"Nome destino: {s.target_name}")
     print(f"Recibos limpos: {s.receipts_cleared}")
+    if s.receipts_cleared == 0:
+        print("Recibos preservados: sim")
     print(f"Identificadores atualizados: {s.identifiers_updated}")
     print(f"cpfBeneficiario atualizados: {s.cpf_beneficiario_updated}")
+    print("Estrutura:")
+    print(f"  classe base 2026: {s.reference.classe_base_2026}")
+    if s.reference.classe_referencia:
+        print(f"  classe referência 2025: {s.reference.classe_referencia}")
+        print(f"  tipoItens base: {s.reference.tipo_itens_base_prefix}")
+        print(f"  tipoItens referência: {s.reference.tipo_itens_referencia_prefix}")
     if s.bens is not None:
         b = s.bens
         print("Bens e Direitos:")

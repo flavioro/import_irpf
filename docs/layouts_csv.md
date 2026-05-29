@@ -68,3 +68,9 @@ Colunas recomendadas:
 - `tipoBeneficiario`
 
 Eventos contendo `dividendo` ou `rendimento` entram como isentos. Eventos contendo `jcp` ou `juros sobre capital` entram como tributação exclusiva.
+
+## Campo `tipo` em Bens
+
+Na planilha de entrada, o campo `tipo` pode vir com descrições como `ON`, `PN`, `PNA`, `PNB`, `UNIT`, `BDR`, `ETF` ou `Cotas`.
+
+Para compatibilidade com o XML do IRPF 2026, o importador grava esse atributo técnico como `T`, porque o programa aceita somente 1 caractere nesse campo. A informação textual deve continuar na coluna `discriminacao`.

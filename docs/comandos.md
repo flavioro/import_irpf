@@ -18,14 +18,14 @@ Use este comando quando você já tem um XML pronto/corrigido e precisa apenas g
 
 ```bat
 irpf-importer conf ^
-  --xml "data\work\declaracoes\00000000000 \00000000000 -0000000000.xml" ^
+  --xml "data\work\declaracoes\00000000000\00000000000-0000000000.xml" ^
   --irpf-dir "%IRPF_DIR%"
 ```
 
 O arquivo `.conf` é criado/atualizado ao lado do XML:
 
 ```text
-data\work\declaracoes\00000000000 \00000000000 -0000000000.conf
+data\work\declaracoes\00000000000\00000000000-0000000000.conf
 ```
 
 O comando usa a mesma rotina Java do programa IRPF usada pelas importações. Se o Java/Groovy retornar erro ou stacktrace, o comando falha em vez de mascarar a falha.

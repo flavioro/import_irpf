@@ -6,15 +6,15 @@ O projeto já recalcula esse arquivo automaticamente após importações reais d
 
 ```bat
 irpf-importer conf ^
-  --xml "data\work\declaracoes\00000000000 \00000000000 -0000000000.xml" ^
+  --xml "data\work\declaracoes\00000000000\00000000000-0000000000.xml" ^
   --irpf-dir "%IRPF_DIR%"
 ```
 
 O `.conf` será salvo ao lado do XML:
 
 ```text
-00000000000 -0000000000.xml
-00000000000 -0000000000.conf
+00000000000-0000000000.xml
+00000000000-0000000000.conf
 ```
 
 A implementação fica em `src/irpf_importer/conf.py`, na função `recalcular_conf`. Ela chama o `java.exe` do próprio IRPF 2026 e a classe `serpro.ppgd.persistenciagenerica.RepositorioXMLDefault`.

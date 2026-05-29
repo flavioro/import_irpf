@@ -198,3 +198,45 @@ def test_upsert_skips_ambiguous_codigo_negociacao_instead_of_adding_duplicate(tm
     assert stats.skipped_ambiguous == 1
     assert stats.total_items == 2
     assert xml.read_text(encoding="utf-8") == original
+
+
+def test_import_normalizes_tipo_to_single_character_for_irpf_transmission(tmp_path: Path):
+    xml = tmp_path / "dec.xml"
+    csv_path = tmp_path / "bens.csv"
+    write_xml_with_investments(xml)
+    fieldnames = [
+        "acao",
+        "grupo",
+        "codigo",
+        "codigoNegociacao",
+        "registroBem",
+        "discriminacao",
+        "niEmpresa",
+        "valorExercicioAnterior",
+        "valorExercicioAtual",
+        "tipo",
+    ]
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerow(
+            {
+                "acao": "upsert",
+                "grupo": "03",
+                "codigo": "01",
+                "codigoNegociacao": "CMIG4",
+                "registroBem": "CMIG4",
+                "discriminacao": "CMIG4; CIA ENERGETICA DE MINAS GERAIS; tipo PN",
+                "niEmpresa": "17.155.730/0001-64",
+                "valorExercicioAnterior": "1.100,00",
+                "valorExercicioAtual": "4.200,00",
+                "tipo": "PN",
+            }
+        )
+
+    stats = import_bens(xml, csv_path, mode="upsert")
+
+    assert stats.updated == 1
+    cmig = items_by_codigo(xml)["CMIG4"]
+    assert cmig.attrib["tipo"] == "T"
+    assert len(cmig.attrib["tipo"]) == 1

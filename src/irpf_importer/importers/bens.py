@@ -221,6 +221,22 @@ def consolidate_rows_for_upsert(rows: list[dict[str, str]]) -> tuple[list[dict[s
     return ordered, duplicates
 
 
+def normalize_tipo_bem(value: str | None) -> str:
+    """Normaliza o atributo ``tipo`` de Bens para o leiaute aceito pelo IRPF.
+
+    O XML do IRPF 2026 aceita esse campo com tamanho 1. Relatórios de
+    corretoras costumam trazer descrições como ON, PN, PNA, PNB, UNIT, BDR, ETF
+    ou Cotas. Essas descrições devem ficar na discriminação; no atributo técnico
+    ``tipo`` usamos ``T`` para evitar erro na transmissão.
+    """
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    if len(raw) <= 1:
+        return raw
+    return "T"
+
+
 def apply_bem_row_to_item(item: ET.Element, row: dict[str, str], indice: str, *, reset: bool) -> None:
     if reset:
         item.attrib.clear()
@@ -230,7 +246,10 @@ def apply_bem_row_to_item(item: ET.Element, row: dict[str, str], indice: str, *,
     for field in CSV_FIELDS:
         value = (row.get(field) or "").strip()
         if value:
-            item.attrib[field] = value
+            item.attrib[field] = normalize_tipo_bem(value) if field == "tipo" else value
+
+    if "tipo" in item.attrib:
+        item.attrib["tipo"] = normalize_tipo_bem(item.attrib.get("tipo"))
 
     for money_field in MONEY_FIELDS:
         if money_field in item.attrib:

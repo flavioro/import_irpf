@@ -45,3 +45,13 @@ tmp/**
 
 # Permitir arquivos fake de input do projeto
 !data/input/**
+
+# Dados locais e arquivos sensiveis
+/data/
+/tmp/
+*.xml
+*.conf
+*.bak
+*.BKP
+*.DEC
+*.REC

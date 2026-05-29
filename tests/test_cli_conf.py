@@ -19,7 +19,7 @@ def test_cli_conf_help_is_registered(capsys: pytest.CaptureFixture[str]):
 
 
 def test_cli_conf_calls_recalcular_conf(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path):
-    xml = tmp_path / "00000000000 -0000000000.xml"
+    xml = tmp_path / "00000000000-0000000000.xml"
     xml.write_text("<classe />", encoding="utf-8")
     irpf_dir = tmp_path / "IRPF2026"
     irpf_dir.mkdir()
