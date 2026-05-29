@@ -7,6 +7,7 @@ from .clone import clone_declaration, print_result as print_clone_result, SUPPOR
 from .importers.bens import run_import as run_import_bens, SUPPORTED_MODES as BENS_MODES
 from .importers.proventos import run_import as run_import_proventos, SUPPORTED_MODES as PROVENTOS_MODES
 from .migrar import migrate_declaration, print_result as print_migration_result
+from .conf import recalcular_conf
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -29,9 +30,14 @@ def build_parser() -> argparse.ArgumentParser:
     prov.add_argument("--mode", choices=PROVENTOS_MODES, default="dry-run")
     prov.add_argument("--sem-recalcular-conf", action="store_true")
 
+    conf = sub.add_parser("conf", help="Gera/atualiza o arquivo .conf correspondente a um XML do IRPF.", description="Gera/atualiza o arquivo .conf correspondente a um XML do IRPF.")
+    conf.add_argument("--irpf-dir", required=True, help="Pasta de instalação do IRPF 2026.")
+    conf.add_argument("--xml", required=True, help="Caminho do XML para gerar/atualizar o .conf ao lado dele.")
 
-    migrar = sub.add_parser("migrar", help="Gera uma declaração 2026 a partir de XML base 2025 e planilhas atualizadas.")
-    migrar.add_argument("--source-xml", required=True, help="XML base da declaração anterior, ex.: IRPF 2025.")
+    migrar = sub.add_parser("migrar", help="Atualiza uma declaração IRPF 2026 usando planilhas atuais e, opcionalmente, XML 2025 como referência.")
+    migrar.add_argument("--base-xml-2026", help="XML criado/reconhecido pelo programa IRPF 2026. Este é o arquivo base que será atualizado.")
+    migrar.add_argument("--referencia-xml-2025", help="Opcional: XML da declaração 2025 entregue, usado apenas para comparação/referência.")
+    migrar.add_argument("--source-xml", help="Compatibilidade: alias antigo para --base-xml-2026.")
     migrar.add_argument("--target-dir", required=True, help="Pasta de saída para a declaração migrada.")
     migrar.add_argument("--irpf-dir", help="Pasta de instalação do IRPF 2026. Obrigatório se recalcular .conf.")
     migrar.add_argument("--bens", help="CSV/XLSX atualizado de Bens e Direitos.")
@@ -42,7 +48,8 @@ def build_parser() -> argparse.ArgumentParser:
     migrar.add_argument("--proventos-mode", choices=PROVENTOS_MODES, default="replace")
     migrar.add_argument("--report", help="Caminho para gravar relatório JSON da migração.")
     migrar.add_argument("--dry-run", action="store_true")
-    migrar.add_argument("--sem-limpar-recibos", action="store_true")
+    migrar.add_argument("--limpar-recibos", action="store_true", help="Opcional: limpa recibos/metadados de transmissão. Por padrão, recibos do XML 2026 base são preservados.")
+    migrar.add_argument("--sem-limpar-recibos", action="store_true", help=argparse.SUPPRESS)  # compatibilidade; agora é o padrão
     migrar.add_argument("--sem-recalcular-conf", action="store_true")
 
     clone = sub.add_parser("clone", help="Clona/sanitiza uma declaração para outro CPF.")
@@ -100,16 +107,24 @@ def main() -> None:
         print(f"Totais: isentos={s.total_isentos} jcp={s.total_jcp}")
         return
 
+    if args.command == "conf":
+        xml_path = Path(args.xml)
+        recalcular_conf(Path(args.irpf_dir), xml_path)
+        conf_path = xml_path.with_suffix(".conf")
+        print(f"CONF atualizado: {conf_path}")
+        return
+
     if args.command == "migrar":
         result = migrate_declaration(
-            source_xml=Path(args.source_xml),
+            base_xml_2026=Path(args.base_xml_2026) if args.base_xml_2026 else (Path(args.source_xml) if args.source_xml else None),
+            referencia_xml_2025=Path(args.referencia_xml_2025) if args.referencia_xml_2025 else None,
             target_dir=Path(args.target_dir),
             irpf_dir=Path(args.irpf_dir) if args.irpf_dir else None,
             bens_file=Path(args.bens) if args.bens else None,
             proventos_file=Path(args.proventos) if args.proventos else None,
             target_cpf=args.target_cpf,
             target_name=args.target_name,
-            clear_receipts=not args.sem_limpar_recibos,
+            clear_receipts=args.limpar_recibos,
             recalc_conf=not args.sem_recalcular_conf,
             dry_run=args.dry_run,
             bens_mode=args.bens_mode,

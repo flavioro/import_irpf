@@ -12,6 +12,24 @@ Rodar testes:
 pytest -q
 ```
 
+## Gerar/atualizar somente o `.conf`
+
+Use este comando quando você já tem um XML pronto/corrigido e precisa apenas gerar a chave/hash `.conf` correspondente, sem importar bens/proventos novamente:
+
+```bat
+irpf-importer conf ^
+  --xml "data\work\declaracoes\00000000000 \00000000000 -0000000000.xml" ^
+  --irpf-dir "%IRPF_DIR%"
+```
+
+O arquivo `.conf` é criado/atualizado ao lado do XML:
+
+```text
+data\work\declaracoes\00000000000 \00000000000 -0000000000.conf
+```
+
+O comando usa a mesma rotina Java do programa IRPF usada pelas importações. Se o Java/Groovy retornar erro ou stacktrace, o comando falha em vez de mascarar a falha.
+
 Importar bens em simulação segura. O `dry-run` simula `upsert`, não altera o XML e não recalcula o `.conf`:
 
 ```bat
@@ -83,16 +101,19 @@ irpf-importer bens ^
 O resultado esperado deve ter `Adicionados: 0` ou somente itens que você decidiu tratar manualmente. Se aparecer `Ignorados por chave ambígua`, revise esses ativos antes de copiar para a pasta oficial da Receita.
 
 
-## Migrar XML 2025 para uma declaração de trabalho 2026
+## Migrar/atualizar declaração IRPF 2026
+
+Use como base o XML 2026 que já aparece/abre no programa da Receita. O XML 2025 entra somente como referência opcional.
 
 Simular sem gravar saída final:
 
 ```bat
 irpf-importer migrar ^
-  --source-xml "data\input\xml_2025\21585587400-0000000000.xml" ^
+  --base-xml-2026 "data\work\declaracoes\SEU_CPF\SEU_CPF-0000000000.xml" ^
+  --referencia-xml-2025 "data\input\xml_2025\SEU_CPF-1839317427.xml" ^
   --target-dir "data\work\migracao_2026" ^
-  --bens "data\input\bens\bens_2025.xlsx" ^
-  --proventos "data\input\proventos\proventos_2025.csv" ^
+  --bens "data\input\bens\bens_2025_preparado_importacao.xlsx" ^
+  --proventos "data\input\proventos\proventos_2025_preparado_importacao.xlsx" ^
   --dry-run ^
   --sem-recalcular-conf
 ```
@@ -101,14 +122,15 @@ Gerar a declaração de trabalho e recalcular `.conf`:
 
 ```bat
 irpf-importer migrar ^
-  --source-xml "data\input\xml_2025\21585587400-0000000000.xml" ^
+  --base-xml-2026 "data\work\declaracoes\SEU_CPF\SEU_CPF-0000000000.xml" ^
+  --referencia-xml-2025 "data\input\xml_2025\SEU_CPF-1839317427.xml" ^
   --target-dir "data\work\migracao_2026" ^
-  --bens "data\input\bens\bens_2025.xlsx" ^
-  --proventos "data\input\proventos\proventos_2025.csv" ^
+  --bens "data\input\bens\bens_2025_preparado_importacao.xlsx" ^
+  --proventos "data\input\proventos\proventos_2025_preparado_importacao.xlsx" ^
   --irpf-dir "%IRPF_DIR%" ^
   --report "data\reports\migracao_2025_2026.json"
 ```
 
-O comando mantém CPF/nome do XML base, exceto se você informar `--target-cpf` e `--target-name`.
+O comando mantém CPF/nome do XML base 2026, exceto se você informar `--target-cpf` e `--target-name`.
 
 Veja o fluxo completo em `docs/migracao_2025_2026.md`.

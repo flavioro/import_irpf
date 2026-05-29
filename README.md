@@ -97,6 +97,14 @@ Importar proventos:
 irpf-importer proventos --mode replace --irpf-dir "C:\Arquivos de Programas RFB\IRPF2026" --xml "C:\caminho\declaracao.xml" --arquivo dados\proventos.xlsx --backup-dir backup
 ```
 
+Gerar/atualizar somente o arquivo `.conf` de um XML já corrigido:
+
+```bat
+irpf-importer conf --xml "data\work\declaracoes\00000000000 \00000000000 -0000000000.xml" --irpf-dir "C:\Arquivos de Programas RFB\IRPF2026"
+```
+
+Esse comando usa a mesma rotina Java do IRPF para gerar a chave/hash `.conf` ao lado do XML.
+
 Clonar/sanitizar declaração para teste ou novo template, sem informar os valores reais antigos. O comando sobrescreve nome/CPF, contato, endereço, título, data de nascimento e limpa recibos conhecidos nos identificadores:
 
 ```bat
@@ -106,18 +114,21 @@ irpf-importer clone --mode identidade --source-xml "data\work\declaracoes\863209
 Veja o mapa completo dos campos em `docs/sanitizacao_clone.md`.
 
 
-## Migração 2025 → 2026
+## Migração para IRPF 2026
 
-Para usar uma declaração do ano anterior como base estrutural e aplicar planilhas atualizadas, use o comando `migrar`. Ele copia o XML base, limpa recibos/metadados de transmissão, aplica Bens/Proventos e recalcula o `.conf` na pasta de trabalho.
+Para atualizar a declaração deste ano, use o XML **2026** que já aparece/abre no programa da Receita como base. O XML de 2025 deve ser usado apenas como referência, porque a estrutura interna muda entre versões (`serpro.ppgd.irpf.*` em 2025 e `serpro.ppgd.irpf.negocio.*` em 2026).
+
+Por padrão, a migração **preserva recibos e metadados** do XML 2026. Ela só limpa recibos se você passar `--limpar-recibos`.
 
 Primeiro simule:
 
 ```bat
 irpf-importer migrar ^
-  --source-xml "data\input\xml_2025\21585587400-0000000000.xml" ^
+  --base-xml-2026 "data\work\declaracoes\SEU_CPF\SEU_CPF-0000000000.xml" ^
+  --referencia-xml-2025 "data\input\xml_2025\SEU_CPF-1839317427.xml" ^
   --target-dir "data\work\migracao_2026" ^
-  --bens "data\input\bens\bens_2025.xlsx" ^
-  --proventos "data\input\proventos\proventos_2025.csv" ^
+  --bens "data\input\bens\bens_2025_preparado_importacao.xlsx" ^
+  --proventos "data\input\proventos\proventos_2025_preparado_importacao.xlsx" ^
   --dry-run ^
   --sem-recalcular-conf
 ```
@@ -126,10 +137,11 @@ Depois execute em uma pasta de trabalho:
 
 ```bat
 irpf-importer migrar ^
-  --source-xml "data\input\xml_2025\21585587400-0000000000.xml" ^
+  --base-xml-2026 "data\work\declaracoes\SEU_CPF\SEU_CPF-0000000000.xml" ^
+  --referencia-xml-2025 "data\input\xml_2025\SEU_CPF-1839317427.xml" ^
   --target-dir "data\work\migracao_2026" ^
-  --bens "data\input\bens\bens_2025.xlsx" ^
-  --proventos "data\input\proventos\proventos_2025.csv" ^
+  --bens "data\input\bens\bens_2025_preparado_importacao.xlsx" ^
+  --proventos "data\input\proventos\proventos_2025_preparado_importacao.xlsx" ^
   --irpf-dir "%IRPF_DIR%" ^
   --report "data\reports\migracao_2025_2026.json"
 ```
@@ -186,3 +198,7 @@ No modo `upsert`, a chave de comparação é escolhida nesta ordem:
 Quando o XML tem mais de um item com a mesma chave, o importador considera a chave ambígua e não atualiza nem adiciona esse item automaticamente. A saída mostra `Ignorados por chave ambígua`, para evitar duplicidade silenciosa.
 
 O recálculo do `.conf` usa caminho absoluto do XML e falha explicitamente se o Java/Groovy da Receita retornar stacktrace, `NoSuchFileException` ou não confirmar `CONF_ATUALIZADO`.
+
+### Observação sobre o campo `tipo` em Bens
+
+Se a planilha trouxer valores como `PN`, `ON`, `PNA`, `PNB`, `UNIT`, `BDR`, `ETF` ou `Cotas`, o importador normaliza automaticamente o atributo XML `tipo` para `T`. Isso evita erro no envio da declaração do IRPF 2026 por tamanho inválido do campo técnico. A descrição completa do tipo deve ficar no texto da discriminação.
