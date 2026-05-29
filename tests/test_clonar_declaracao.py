@@ -7,7 +7,7 @@ from irpf_importer.clone import clone_declaration, q
 def write_sample_xml(path: Path) -> None:
     xml = '''<?xml version="1.0" encoding="UTF-8"?>
 <classe xmlns="http://www.receita.fazenda.gov.br/declaracao" classeJava="serpro.ppgd.irpf.negocio.DeclaracaoIRPF" dataHoraSalvamento="01/01/2026 10:00:00" utlimoCPFAutenticado="111.111.111-11">
-  <contribuinte email="old@example.com" celular="999" dddCelular="11" dataNascimento="01/01/1970" cep="00000-000" tipoLogradouro="RUA" logradouro="ANTIGA" numero="1" complemento="" bairro="CENTRO" municipio="0001" uf="SP" naturezaOcupacao="01" ocupacaoPrincipal="519" cpfConjuge="111.111.111-11" cpfProcurador="111.111.111-11" tituloEleitor="123"/>
+  <contribuinte email="old@example.com" telefone="33334444" ddd="11" celular="999" dddCelular="11" dataNascimento="01/01/1970" cep="00000-000" tipoLogradouro="RUA" logradouro="ANTIGA" numero="1" complemento="" bairro="CENTRO" municipio="0001" uf="SP" naturezaOcupacao="01" ocupacaoPrincipal="519" cpfConjuge="111.111.111-11" cpfProcurador="111.111.111-11" tituloEleitor="123"/>
   <dependentes tipoItens="serpro.ppgd.irpf.negocio.dependentes.Dependente"><item cpfDependente="222.222.222-22" nome="FILHO"/></dependentes>
   <alimentandos tipoItens="serpro.ppgd.irpf.negocio.alimentandos.Alimentando"/>
   <rendPJ totalRendRecebPessoaJuridica="1.000,00"><colecaoRendPJTitular totaisRendRecebidoPJ="1.000,00"><item rendRecebidoPJ="1.000,00"/></colecaoRendPJTitular><colecaoRendPJDependente/></rendPJ>
@@ -17,7 +17,7 @@ def write_sample_xml(path: Path) -> None:
   <doacoes totalDeducaoIncentivo="0,0000" ultimoIndiceGerado=""/>
   <bens totalExercicioAnterior="10,00" totalExercicioAtual="20,00" totalItens="1" ultimoIndiceGerado="00001"><item indice="00001" valorExercicioAnterior="10,00" valorExercicioAtual="20,00" cpfBeneficiario="111.111.111-11"/></bens>
   <dividas totalExercicioAnterior="5,00" totalExercicioAtual="6,00" totalPgtoAnual="1,00"><item valor="5,00"/></dividas>
-  <resumo><outrasInformacoes bensDireitosExercicioAnterior="10,00" bensDireitosExercicioAtual="20,00" rendIsentosNaoTributaveis="100,00" rendIsentosTributacaoExclusiva="200,00"/><calculoImposto imposto="1,00"><identificadorDec cpf="111.111.111-11" nome="ANTIGO" numReciboTransmitido="999" numeroReciboDecAnterior="888" transmitida="1"/></calculoImposto><identificadorDeclaracao cpf="111.111.111-11" nome="ANTIGO" numReciboTransmitido="999" numeroReciboDecAnterior="888" transmitida="1"/></resumo>
+  <resumo><outrasInformacoes bensDireitosExercicioAnterior="10,00" bensDireitosExercicioAtual="20,00" rendIsentosNaoTributaveis="100,00" rendIsentosTributacaoExclusiva="200,00"/><calculoImposto imposto="1,00"><identificadorDec cpf="111.111.111-11" nome="ANTIGO" numReciboTransmitido="999" numReciboDecRetif="777" numeroReciboDecAnterior="888" transmitida="1"/></calculoImposto><identificadorDeclaracao cpf="111.111.111-11" nome="ANTIGO" numReciboTransmitido="999" numReciboDecRetif="777" numeroReciboDecAnterior="888" transmitida="1"/><copiaIdentificador cpf="111.111.111-11" nome="ANTIGO" numReciboTransmitido="999" numReciboDecRetif="777" numeroReciboDecAnterior="888" transmitida="1"/></resumo>
   <rendaVariavel totalImpostoAPagar="10,00"/>
   <fundosInvestimentos totalImpostoDevido="10,00"/>
   <atividadeRural ultimoIndiceGerado="00001"><brasil><identificacaoImovel ultimoIndiceGerado="00001"><item valor="10,00"/></identificacaoImovel></brasil></atividadeRural>
@@ -116,3 +116,55 @@ def test_clone_rejects_invalid_cpf(tmp_path: Path):
         assert "11 dígitos" in str(exc)
     else:
         raise AssertionError("CPF inválido deveria gerar ValueError")
+
+
+def test_clone_sanitiza_campos_cadastrais_mapeados_sem_nome_original(tmp_path: Path):
+    source = tmp_path / "source.xml"
+    write_sample_xml(source)
+
+    result = clone_declaration(
+        source_xml=source,
+        target_dir=tmp_path / "dados",
+        target_cpf="00000000000",
+        target_name="CONTRIBUINTE TESTE",
+        mode="identidade",
+        dry_run=False,
+        recalc_conf=False,
+        email="fake@example.com",
+        telefone="11112222",
+        ddd="19",
+        celular="999998888",
+        ddd_celular="19",
+        titulo_eleitor="0000000000000",
+        data_nascimento="01/01/1980",
+        logradouro="RUA TESTE",
+        bairro="BAIRRO TESTE",
+        cep="13000000",
+        municipio="6291",
+    )
+
+    root = parse_xml(result.stats.target_xml)
+    for tag in ("identificadorDec", "identificadorDeclaracao", "copiaIdentificador"):
+        elem = root.find(f".//{q(tag)}")
+        assert elem is not None
+        assert elem.attrib["nome"] == "CONTRIBUINTE TESTE"
+        assert elem.attrib["cpf"] == "000.000.000-00"
+        assert elem.attrib["numeroReciboDecAnterior"] == ""
+        assert elem.attrib["numReciboDecRetif"] == ""
+        assert elem.attrib["numReciboTransmitido"] == ""
+
+    contribuinte = root.find(q("contribuinte"))
+    assert contribuinte is not None
+    assert contribuinte.attrib["logradouro"] == "RUA TESTE"
+    assert contribuinte.attrib["bairro"] == "BAIRRO TESTE"
+    assert contribuinte.attrib["cep"] == "13000000"
+    assert contribuinte.attrib["municipio"] == "6291"
+    assert contribuinte.attrib["email"] == "fake@example.com"
+    assert contribuinte.attrib["telefone"] == "11112222"
+    assert contribuinte.attrib["celular"] == "999998888"
+    assert contribuinte.attrib["tituloEleitor"] == "0000000000000"
+    assert contribuinte.attrib["dataNascimento"] == "01/01/1980"
+
+    for item in root.findall(f".//{q('item')}"):
+        if "cpfBeneficiario" in item.attrib:
+            assert item.attrib["cpfBeneficiario"] == "000.000.000-00"

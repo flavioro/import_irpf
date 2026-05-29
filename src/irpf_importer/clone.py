@@ -15,6 +15,9 @@ ET.register_namespace("", NS)
 
 SUPPORTED_CLONE_MODES = ("identidade", "template-limpo", "anonimo")
 ZERO_MONEY = "0,00"
+
+IDENTIFIER_TAGS = ("identificadorDec", "identificadorDeclaracao", "copiaIdentificador")
+RECEIPT_ATTRS = ("numeroReciboDecAnterior", "numReciboDecRetif", "numReciboTransmitido")
 BLANK_CPF = "   .   .   -  "
 
 
@@ -117,8 +120,11 @@ def update_common_identity(
     target_cpf: str,
     target_name: str,
     email: str = "",
+    telefone: str = "",
+    ddd: str = "",
     celular: str = "",
     ddd_celular: str = "",
+    titulo_eleitor: str = "0000000000000",
     data_nascimento: str = "",
     cep: str = "",
     tipo_logradouro: str = "RUA",
@@ -141,8 +147,11 @@ def update_common_identity(
     if contribuinte is not None:
         updates = {
             "email": email,
+            "telefone": telefone,
+            "ddd": ddd,
             "celular": celular,
             "dddCelular": ddd_celular,
+            "tituloEleitor": titulo_eleitor,
             "dataNascimento": data_nascimento,
             "cep": cep,
             "tipoLogradouro": tipo_logradouro,
@@ -156,19 +165,17 @@ def update_common_identity(
             "ocupacaoPrincipal": ocupacao_principal,
             "cpfConjuge": format_cpf(cpf_conjuge) if only_digits(cpf_conjuge) else BLANK_CPF,
             "cpfProcurador": BLANK_CPF,
-            "tituloEleitor": "0000000000000",
         }
         for key, value in updates.items():
             if key in contribuinte.attrib or value:
                 contribuinte.attrib[key] = value
 
-    for ident_tag in ("identificadorDeclaracao", "identificadorDec"):
+    for ident_tag in IDENTIFIER_TAGS:
         for ident in root.findall(f".//{q(ident_tag)}"):
             ident.attrib["cpf"] = cpf_fmt
             ident.attrib["nome"] = target_name
-            ident.attrib["numReciboTransmitido"] = "0000000000"
-            ident.attrib["numReciboDecRetif"] = ""
-            ident.attrib["numeroReciboDecAnterior"] = ""
+            for receipt_attr in RECEIPT_ATTRS:
+                ident.attrib[receipt_attr] = ""
             ident.attrib["transmitida"] = "0"
             ident.attrib["tpTransmitida"] = ""
             ident.attrib["declaracaoRetificadora"] = "0"
@@ -279,8 +286,11 @@ def clone_declaration(
     dry_run: bool = False,
     recalc_conf: bool = True,
     email: str = "",
+    telefone: str = "",
+    ddd: str = "",
     celular: str = "",
     ddd_celular: str = "",
+    titulo_eleitor: str = "0000000000000",
     data_nascimento: str = "",
     cep: str = "",
     tipo_logradouro: str = "RUA",
@@ -313,8 +323,11 @@ def clone_declaration(
         target_cpf=target_cpf_digits,
         target_name=target_name,
         email=email,
+        telefone=telefone,
+        ddd=ddd,
         celular=celular,
         ddd_celular=ddd_celular,
+        titulo_eleitor=titulo_eleitor,
         data_nascimento=data_nascimento,
         cep=cep,
         tipo_logradouro=tipo_logradouro,
@@ -391,8 +404,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sem-recalcular-conf", action="store_true")
 
     parser.add_argument("--email", default="")
+    parser.add_argument("--telefone", default="")
+    parser.add_argument("--ddd", default="")
     parser.add_argument("--celular", default="")
     parser.add_argument("--ddd-celular", default="")
+    parser.add_argument("--titulo-eleitor", default="0000000000000")
     parser.add_argument("--data-nascimento", default="")
     parser.add_argument("--cep", default="")
     parser.add_argument("--tipo-logradouro", default="RUA")
@@ -438,8 +454,11 @@ def main() -> None:
         dry_run=args.dry_run,
         recalc_conf=not args.sem_recalcular_conf,
         email=args.email,
+        telefone=args.telefone,
+        ddd=args.ddd,
         celular=args.celular,
         ddd_celular=args.ddd_celular,
+        titulo_eleitor=args.titulo_eleitor,
         data_nascimento=args.data_nascimento,
         cep=args.cep,
         tipo_logradouro=args.tipo_logradouro,
